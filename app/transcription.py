@@ -2,7 +2,7 @@ import base64
 import logging
 from openai import OpenAI
 from app.config import settings
-from app.schemas import TranscriptionResponse
+from app.schemas import TranscriptionResponse, TranscriptionExtracted
 
 logger = logging.getLogger(__name__)
 client = OpenAI(api_key=settings.openai_api_key)
@@ -43,7 +43,7 @@ def transcribe_letter(image_bytes: bytes) -> TranscriptionResponse:
                 ],
             },
         ],
-        response_format=TranscriptionResponse,
+        response_format=TranscriptionExtracted,
     )
 
     result = completion.choices[0].message.parsed
@@ -51,4 +51,4 @@ def transcribe_letter(image_bytes: bytes) -> TranscriptionResponse:
         "Transcription successful",
         extra={"confidence": result.confidence, "request_type": result.requestType},
     )
-    return result
+    return TranscriptionResponse(**result.model_dump())

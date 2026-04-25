@@ -44,31 +44,35 @@ class TranscriptionRequest(BaseModel):
     s3_key: Optional[str] = Field(None, description="Clé de l'objet S3")
 
 
-class TranscriptionResponse(BaseModel):
-    """Sortie de /transcribe.
+class TranscriptionExtracted(BaseModel):
+    """Contenu extrait du courrier par le fournisseur IA.
 
-    Inspirée d'un schéma de production utilisé lors d'un stage chez Atos
-    pour l'automatisation Salesforce de la Mairie de Rueil-Malmaison.
+    C'est le seul modèle transmis au LLM comme response_format.
+    Il contient uniquement des champs déductibles depuis l'image,
+    jamais de métadonnées système.
     """
-    model_config = ConfigDict(json_schema_extra={
-        "example": {
-            "subject": "Demande de renouvellement de passeport",
-            "descriptionHtml": "<p>Jean Dupont...</p>",
-            "contactName": "Jean Dupont",
-            "contactEmail": "jean.dupont@gmail.com",
-            "contactPhone": "+33612345678",
-            "addressLine": "12, rue des chênes",
-            "postalCode": "75015",
-            "city": "Paris",
-            "requestType": "passeport",
-            "operation": "renouvellement",
-            "channel": "mail",
-            "language": "fr",
-            "handwritingDetected": True,
-            "confidence": 0.98,
-            "notes": "Écriture manuscrite détectée – vérification humaine recommandée.",
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "subject": "Demande de renouvellement de passeport",
+                "descriptionHtml": "<p>Jean Dupont...</p>",
+                "contactName": "Jean Dupont",
+                "contactEmail": "jean.dupont@gmail.com",
+                "contactPhone": "+33612345678",
+                "addressLine": "12, rue des chênes",
+                "postalCode": "75015",
+                "city": "Paris",
+                "requestType": "passeport",
+                "operation": "renouvellement",
+                "channel": "mail",
+                "language": "fr",
+                "handwritingDetected": True,
+                "confidence": 0.98,
+                "notes": "Écriture manuscrite détectée – vérification humaine recommandée.",
+            }
         }
-    })
+    )
 
     subject: str = Field(..., description="Objet court extrait du courrier")
     descriptionHtml: str = Field(..., description="Transcription complète en HTML")
@@ -85,4 +89,15 @@ class TranscriptionResponse(BaseModel):
     handwritingDetected: bool = True
     confidence: float = Field(..., ge=0.0, le=1.0, description="De 0.0 à 1.0")
     notes: Optional[str] = None
-    processedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TranscriptionResponse(TranscriptionExtracted):
+    """Réponse publique de l'API.
+
+    Contenu extrait plus métadonnées système.
+    """
+
+    processedAt: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Date et heure de traitement côté serveur",
+    )
