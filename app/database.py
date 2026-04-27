@@ -39,5 +39,5 @@ def get_session() -> Iterator[Session]:
 
 def init_db() -> None:
     """Create tables. Called once at app startup. POC-grade; production uses Alembic."""
-    from app import models
+    from app import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
