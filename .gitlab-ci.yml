@@ -137,14 +137,18 @@ deploy:ansible:
     - apt-get update -qq && apt-get install -y -qq rsync openssh-client
     - pip install --quiet ansible==10.5.0
     - ansible-galaxy collection install ansible.posix community.general
+    - export EC2_IP=$(tr -d '[:space:]' < ec2_ip.txt)
+    - echo "EC2_IP=${EC2_IP}"
+    - test -n "${EC2_IP}" || (echo "ERROR: EC2_IP empty" && exit 1)
     # SSH key from CI File-type variable -> file with strict perms
     - mkdir -p ~/.ssh
     - cp "$SSH_PRIVATE_KEY" /tmp/letter-poc.pem
     - chmod 400 /tmp/letter-poc.pem
-    - ssh-keyscan -H "$(cat ec2_ip.txt)" >> ~/.ssh/known_hosts 2>/dev/null
+    - ssh-keyscan -H "${EC2_IP}" >> ~/.ssh/known_hosts
   script:
+    - export EC2_IP=$(tr -d '[:space:]' < ec2_ip.txt)
     - cd $ANSIBLE_DIR
-    - sed "s|__EC2_IP__|$(cat $CI_PROJECT_DIR/ec2_ip.txt)|g" inventory.ci.ini > inventory.ini
+    - sed "s|__EC2_IP__|${EC2_IP}|g" inventory.ci.ini > inventory.ini
     - cat inventory.ini
     # Login GitLab Container Registry on the EC2 so Compose can pull the image
     - |
