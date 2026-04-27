@@ -12,13 +12,12 @@ class Base(DeclarativeBase):
     """Base class for all ORM models."""
     pass
 
-engine = create_engine(
-    settings.database_url,
-    pool_size=settings.db_pool_size,
-    max_overflow=settings.db_max_overflow,
-    pool_pre_ping=True,
-    echo=False,
-)
+_engine_kwargs: dict = {"pool_pre_ping": True, "echo": False}
+if not settings.database_url.startswith("sqlite"):
+    _engine_kwargs["pool_size"] = settings.db_pool_size
+    _engine_kwargs["max_overflow"] = settings.db_max_overflow
+
+engine = create_engine(settings.database_url, **_engine_kwargs)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
