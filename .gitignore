@@ -9,3 +9,17 @@ venv/
 samples/*.jpg
 samples/*.png
 !samples/.gitkeep
+
+# Terraform
+infra/terraform/.terraform/
+infra/terraform/.terraform.lock.hcl
+infra/terraform/terraform.tfvars
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/crash.log
+infra/terraform/crash.*.log
+
+# Ansible
+infra/ansible/inventory.ini
+infra/ansible/secrets.yml
+infra/ansible/*.retry
