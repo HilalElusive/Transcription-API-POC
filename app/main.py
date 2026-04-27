@@ -11,6 +11,10 @@ from app.database import engine, init_db
 from app.metrics import (TRANSCRIBED_TEXT_LENGTH, TRANSCRIPTION_CONFIDENCE, TRANSCRIPTIONS_TOTAL, )
 from app.schemas import TranscriptionResponse
 from app.transcription import transcribe_letter
+import os
+import socket
+
+SERVED_BY_POD = os.environ.get("HOSTNAME") or socket.gethostname()
 
 logging.basicConfig(
     level=settings.log_level,
@@ -29,7 +33,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Letter Transcription API",
     description="Transcribe handwritten letters to structured JSON",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -110,4 +114,6 @@ async def transcribe(file: UploadFile = File(...)):
         processing_time_ms=result.duration_ms,
     )
 
-    return result.response
+    response = result.response
+    response.servedByPod = SERVED_BY_POD
+    return response

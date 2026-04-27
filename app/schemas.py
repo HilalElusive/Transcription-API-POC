@@ -101,3 +101,7 @@ class TranscriptionResponse(TranscriptionExtracted):
         default_factory=lambda: datetime.now(timezone.utc),
         description="Date et heure de traitement côté serveur",
     )
+    servedByPod: Optional[str] = Field(
+        default=None,
+        description="Hostname du pod/conteneur ayant traité la requête",
+    )

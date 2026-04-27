@@ -42,3 +42,4 @@ def test_transcribe_success():
         r = client.post("/transcribe", files={"file": ("a.jpg", b"fakebytes", "image/jpeg")})
     assert r.status_code == 200
     assert r.json()["requestType"] == "passeport"
+    assert r.json()["servedByPod"] is not None
