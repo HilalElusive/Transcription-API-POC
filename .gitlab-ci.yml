@@ -136,7 +136,7 @@ deploy:ansible:
   before_script:
     - apt-get update -qq && apt-get install -y -qq rsync openssh-client
     - pip install --quiet ansible==10.5.0
-    - ansible-galaxy collection install ansible.posix community.general --quiet
+    - ansible-galaxy collection install ansible.posix community.general
     # SSH key from CI File-type variable -> file with strict perms
     - mkdir -p ~/.ssh
     - cp "$SSH_PRIVATE_KEY" /tmp/letter-poc.pem
