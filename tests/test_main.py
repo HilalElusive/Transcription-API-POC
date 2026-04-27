@@ -2,6 +2,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from app.main import app
 from app.schemas import TranscriptionResponse, RequestType, Operation, Channel
+from app.transcription import TranscriptionResult
 
 client = TestClient(app)
 
@@ -29,7 +30,15 @@ def test_transcribe_success():
         requestType=RequestType.PASSEPORT, operation=Operation.RENOUVELLEMENT,
         channel=Channel.MAIL, confidence=0.95,
     )
-    with patch("app.main.transcribe_letter", return_value=fake_response):
+    fake_result = TranscriptionResult(
+        response=fake_response,
+        duration_ms=123,
+        tokens_input=100,
+        tokens_output=50,
+        model="gpt-4o-mini",
+    )
+    with patch("app.main.transcribe_letter", return_value=fake_result), \
+         patch("app.main.repository.save_success", return_value=None):
         r = client.post("/transcribe", files={"file": ("a.jpg", b"fakebytes", "image/jpeg")})
     assert r.status_code == 200
     assert r.json()["requestType"] == "passeport"
