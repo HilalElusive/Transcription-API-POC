@@ -1,0 +1,108 @@
+---
+- name: Configure EC2 and deploy Letter Transcription stack
+  hosts: app
+  become: true
+  gather_facts: true
+
+  vars:
+    app_dir: /opt/letter-transcription
+    repo_root: "{{ playbook_dir }}/../.."
+
+  pre_tasks:
+    - name: Validate required secrets are provided
+      ansible.builtin.assert:
+        that:
+          - openai_api_key is defined and openai_api_key | length > 0
+          - openai_api_key != "sk-replace-me"
+          - postgres_password is defined and postgres_password | length > 0
+          - grafana_password is defined and grafana_password | length > 0
+        fail_msg: >-
+          Required variables missing or default. Run with:
+          ansible-playbook playbook.yml --extra-vars "@secrets.yml"
+
+  roles:
+    - docker
+
+  tasks:
+    - name: Flush handlers (apply Docker config before compose runs)
+      ansible.builtin.meta: flush_handlers
+
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: "0755"
+
+    - name: Sync application code to EC2
+      ansible.posix.synchronize:
+        src: "{{ repo_root }}/"
+        dest: "{{ app_dir }}/"
+        delete: true
+        recursive: true
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=.terraform"
+          - "--exclude=__pycache__"
+          - "--exclude=.pytest_cache"
+          - "--exclude=*.tfstate*"
+          - "--exclude=infra/ansible/secrets.yml"
+          - "--exclude=infra/ansible/inventory.ini"
+          - "--exclude=.env"
+          - "--exclude=node_modules"
+      become: false
+
+    - name: Fix ownership after sync
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        recurse: true
+
+    - name: Render .env from template
+      ansible.builtin.template:
+        src: env.j2
+        dest: "{{ app_dir }}/.env"
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+      notify: restart_stack
+
+    - name: Pull base images (parallel, idempotent)
+      ansible.builtin.command:
+        cmd: docker compose pull --ignore-buildable
+        chdir: "{{ app_dir }}"
+      register: compose_pull
+      changed_when: "'Pull complete' in compose_pull.stdout or 'Downloaded' in compose_pull.stdout"
+
+    - name: Build and start the stack
+      ansible.builtin.command:
+        cmd: docker compose up -d --build --remove-orphans
+        chdir: "{{ app_dir }}"
+      register: compose_up
+      changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr or 'Recreated' in compose_up.stderr"
+
+    - name: Wait for API to become ready
+      ansible.builtin.uri:
+        url: http://localhost:8000/health/ready
+        status_code: 200
+      register: ready_check
+      until: ready_check.status == 200
+      retries: 30
+      delay: 2
+
+  handlers:
+    - name: reset_ssh_connection
+      ansible.builtin.meta: reset_connection
+
+    - name: restart_stack
+      ansible.builtin.command:
+        cmd: docker compose up -d
+        chdir: "{{ app_dir }}"
+
+    - name: restart_docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
