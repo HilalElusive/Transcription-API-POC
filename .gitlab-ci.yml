@@ -134,16 +134,19 @@ deploy:ansible:
     - job: infra:apply
       artifacts: true
   before_script:
-    - apt-get update -qq && apt-get install -y -qq rsync openssh-client
+    - apt-get update -qq && apt-get install -y -qq rsync openssh-client netcat-openbsd
     - pip install --quiet ansible==10.5.0
     - ansible-galaxy collection install ansible.posix community.general
     - export EC2_IP=$(tr -d '[:space:]' < ec2_ip.txt)
     - echo "EC2_IP=${EC2_IP}"
     - test -n "${EC2_IP}" || (echo "ERROR EC2_IP empty" && exit 1)
+    - echo "Probing SSH connectivity..."
+    - nc -zv -w 10 "${EC2_IP}" 22
     - mkdir -p ~/.ssh
     - cp "$SSH_PRIVATE_KEY" /tmp/letter-poc.pem
     - chmod 400 /tmp/letter-poc.pem
-    - ssh-keyscan -H "${EC2_IP}" >> ~/.ssh/known_hosts
+    - echo "Running ssh-keyscan..."
+    - ssh-keyscan -v -H "${EC2_IP}" >> ~/.ssh/known_hosts
   script:
     - export EC2_IP=$(tr -d '[:space:]' < ec2_ip.txt)
     - cd $ANSIBLE_DIR
