@@ -152,8 +152,10 @@ deploy:ansible:
     - cd $ANSIBLE_DIR
     - sed "s|__EC2_IP__|${EC2_IP}|g" inventory.ci.ini > inventory.ini
     - cat inventory.ini
+    - export ANSIBLE_CONFIG=$(pwd)/ansible.cfg
+    - export ANSIBLE_HOST_KEY_CHECKING=False
     - bash $CI_PROJECT_DIR/ci/registry-login.sh
     - bash $CI_PROJECT_DIR/ci/render-extra-vars.sh > /tmp/extra-vars.yml
-    - ansible-playbook playbook.yml --extra-vars "@/tmp/extra-vars.yml"
+    - ansible-playbook -i inventory.ini playbook.yml --extra-vars "@/tmp/extra-vars.yml"
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
