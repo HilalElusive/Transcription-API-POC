@@ -139,8 +139,7 @@ deploy:ansible:
     - ansible-galaxy collection install ansible.posix community.general
     - export EC2_IP=$(tr -d '[:space:]' < ec2_ip.txt)
     - echo "EC2_IP=${EC2_IP}"
-    - test -n "${EC2_IP}" || (echo "ERROR: EC2_IP empty" && exit 1)
-    # SSH key from CI File-type variable -> file with strict perms
+    - test -n "${EC2_IP}" || (echo "ERROR EC2_IP empty" && exit 1)
     - mkdir -p ~/.ssh
     - cp "$SSH_PRIVATE_KEY" /tmp/letter-poc.pem
     - chmod 400 /tmp/letter-poc.pem
@@ -150,24 +149,8 @@ deploy:ansible:
     - cd $ANSIBLE_DIR
     - sed "s|__EC2_IP__|${EC2_IP}|g" inventory.ci.ini > inventory.ini
     - cat inventory.ini
-    # Login GitLab Container Registry on the EC2 so Compose can pull the image
-    - |
-      ansible app -i inventory.ini -b -m shell \
-        -a "echo '$CI_REGISTRY_PASSWORD' | docker login -u '$CI_REGISTRY_USER' --password-stdin '$CI_REGISTRY'"
-    # Render secrets into a transient extra-vars file, never written to the repo
-    - |
-      cat > /tmp/extra-vars.yml <<EOF
-      openai_api_key: "${OPENAI_API_KEY}"
-      openai_model: "gpt-4o-mini"
-      log_level: "INFO"
-      aws_region: "${AWS_DEFAULT_REGION}"
-      postgres_user: "transcription"
-      postgres_password: "${POSTGRES_PASSWORD}"
-      postgres_db: "transcription"
-      grafana_user: "admin"
-      grafana_password: "${GRAFANA_PASSWORD}"
-      api_image: "${IMAGE_NAME}:${IMAGE_TAG}"
-      EOF
+    - bash $CI_PROJECT_DIR/ci/registry-login.sh
+    - bash $CI_PROJECT_DIR/ci/render-extra-vars.sh > /tmp/extra-vars.yml
     - ansible-playbook playbook.yml --extra-vars "@/tmp/extra-vars.yml"
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
