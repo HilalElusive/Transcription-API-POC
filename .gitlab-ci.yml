@@ -1,0 +1,169 @@
+# CI/CD pipeline
+# Stages run linearly: lint -> test -> build -> infra -> deploy
+
+stages:
+  - lint
+  - test
+  - build
+  - infra
+  - deploy
+
+variables:
+  AWS_DEFAULT_REGION: "eu-west-3"
+  TF_DIR: "infra/terraform"
+  ANSIBLE_DIR: "infra/ansible"
+  IMAGE_NAME: "$CI_REGISTRY_IMAGE"
+  IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
+
+# ============================================================================
+# LINT
+# ============================================================================
+lint:python:
+  stage: lint
+  image: python:3.12-slim
+  script:
+    - pip install --quiet ruff==0.7.0
+    - ruff check app/ tests/
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+
+lint:terraform:
+  stage: lint
+  image:
+    name: hashicorp/terraform:1.9.8
+    entrypoint: [""]
+  script:
+    - cd $TF_DIR
+    - terraform fmt -check -recursive
+    - terraform init -backend=false
+    - terraform validate
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+
+# ============================================================================
+# TEST
+# ============================================================================
+test:pytest:
+  stage: test
+  image: python:3.12-slim
+  variables:
+    DATABASE_URL: "sqlite+pysqlite:///:memory:"
+    OPENAI_API_KEY: "sk-test-not-used-in-tests"
+  before_script:
+    - pip install --quiet -r requirements.txt
+  script:
+    - pytest tests/ -v
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+
+# ============================================================================
+# BUILD
+# ============================================================================
+build:image:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - docker build -t "$IMAGE_NAME:$IMAGE_TAG" -t "$IMAGE_NAME:latest" .
+    - docker push "$IMAGE_NAME:$IMAGE_TAG"
+    - docker push "$IMAGE_NAME:latest"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# ============================================================================
+# INFRA
+# ============================================================================
+.terraform_base: &terraform_base
+  image:
+    name: hashicorp/terraform:1.9.8
+    entrypoint: [""]
+  before_script:
+    - cd $TF_DIR
+    - terraform init
+    # Recreate terraform.tfvars from CI variables — never committed.
+    - |
+      cat > terraform.tfvars <<EOF
+      ssh_allowed_cidr = "${TF_SSH_ALLOWED_CIDR}"
+      EOF
+
+infra:plan:
+  <<: *terraform_base
+  stage: infra
+  script:
+    - terraform plan -out=tfplan
+  artifacts:
+    paths:
+      - $TF_DIR/tfplan
+      - $TF_DIR/.terraform.lock.hcl
+    expire_in: 1 hour
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+infra:apply:
+  <<: *terraform_base
+  stage: infra
+  needs:
+    - job: infra:plan
+      artifacts: true
+  script:
+    - terraform apply -auto-approve tfplan
+    - terraform output -raw public_ip > "$CI_PROJECT_DIR/ec2_ip.txt"
+    - echo "EC2 IP=$(cat $CI_PROJECT_DIR/ec2_ip.txt)"
+  artifacts:
+    paths:
+      - ec2_ip.txt
+    expire_in: 1 day
+  when: manual
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# ============================================================================
+# DEPLOY
+# ============================================================================
+deploy:ansible:
+  stage: deploy
+  image: python:3.12-slim
+  needs:
+    - job: build:image
+      artifacts: false
+    - job: infra:apply
+      artifacts: true
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq rsync openssh-client
+    - pip install --quiet ansible==10.5.0
+    - ansible-galaxy collection install ansible.posix community.general --quiet
+    # SSH key from CI File-type variable -> file with strict perms
+    - mkdir -p ~/.ssh
+    - cp "$SSH_PRIVATE_KEY" /tmp/letter-poc.pem
+    - chmod 400 /tmp/letter-poc.pem
+    - ssh-keyscan -H "$(cat ec2_ip.txt)" >> ~/.ssh/known_hosts 2>/dev/null
+  script:
+    - cd $ANSIBLE_DIR
+    - sed "s|__EC2_IP__|$(cat $CI_PROJECT_DIR/ec2_ip.txt)|g" inventory.ci.ini > inventory.ini
+    - cat inventory.ini
+    # Login GitLab Container Registry on the EC2 so Compose can pull the image
+    - |
+      ansible app -i inventory.ini -b -m shell \
+        -a "echo '$CI_REGISTRY_PASSWORD' | docker login -u '$CI_REGISTRY_USER' --password-stdin '$CI_REGISTRY'"
+    # Render secrets into a transient extra-vars file, never written to the repo
+    - |
+      cat > /tmp/extra-vars.yml <<EOF
+      openai_api_key: "${OPENAI_API_KEY}"
+      openai_model: "gpt-4o-mini"
+      log_level: "INFO"
+      aws_region: "${AWS_DEFAULT_REGION}"
+      postgres_user: "transcription"
+      postgres_password: "${POSTGRES_PASSWORD}"
+      postgres_db: "transcription"
+      grafana_user: "admin"
+      grafana_password: "${GRAFANA_PASSWORD}"
+      api_image: "${IMAGE_NAME}:${IMAGE_TAG}"
+      EOF
+    - ansible-playbook playbook.yml --extra-vars "@/tmp/extra-vars.yml"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
