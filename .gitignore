@@ -21,5 +21,16 @@ infra/terraform/crash.*.log
 
 # Ansible
 infra/ansible/inventory.ini
+infra/ansible/inventory.ci.ini
+infra/ansible/inventory-k8s.ini
 infra/ansible/secrets.yml
 infra/ansible/*.retry
+
+# Terraform K8s module
+infra/terraform-k8s/.terraform/
+infra/terraform-k8s/.terraform.lock.hcl
+infra/terraform-k8s/terraform.tfvars
+infra/terraform-k8s/*.tfstate
+infra/terraform-k8s/*.tfstate.*
+infra/terraform-k8s/crash.log
+infra/terraform-k8s/crash.*.log
