@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: transcription
+  labels:
+    app.kubernetes.io/name: transcription
+    app.kubernetes.io/part-of: letter-transcription-poc

@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transcription-api
+  namespace: transcription
+  labels:
+    app: transcription-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: transcription-api
+  template:
+    metadata:
+      labels:
+        app: transcription-api
+    spec:
+      imagePullSecrets:
+        - name: gitlab-registry
+      containers:
+        - name: api
+          image: "{{ api_image }}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - secretRef:
+                name: app-secrets
+          env:
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: AWS_REGION
+              value: "eu-west-3"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transcription-api
+  namespace: transcription
+  labels:
+    app: transcription-api
+spec:
+  type: NodePort
+  selector:
+    app: transcription-api
+  ports:
+    - port: 8000
+      targetPort: http
+      nodePort: 30080
+      protocol: TCP
+      name: http
